@@ -8,12 +8,15 @@ import math
 class ErrorLogger(Node):
     def __init__(self):
         super().__init__('error_logger')
+        self.declare_parameter('output_file', 'pf_error.csv')
+        output_file = self.get_parameter('output_file').get_parameter_value().string_value
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.sub = self.create_subscription(Odometry, '/pf/pose/odom', self.cb, 10)
-        self.csvfile = open('pf_error.csv', 'w', newline='')
+        self.csvfile = open(output_file, 'w', newline='')
         self.writer = csv.writer(self.csvfile)
         self.writer.writerow(['timestamp', 'pf_x', 'pf_y', 'gt_x', 'gt_y', 'error'])
+        self.get_logger().info(f'Logging to {output_file}')
 
     def cb(self, msg):
         try:

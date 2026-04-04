@@ -82,6 +82,12 @@ class ParticleFilter(Node):
         # Don't run the filter until the user sets an initial pose
         self.initialized = False
 
+
+        # Motion noise parameters
+        self.sigma_x = 0.02
+        self.sigma_y = 0.02
+        self.sigma_theta = 0.01
+
         self.get_logger().info("=============+READY+=============")
 
     def pose_callback(self, pose_msg):
@@ -124,9 +130,9 @@ class ParticleFilter(Node):
             return
 
         # Integrate twist over dt to get a body-frame displacement [dx, dy, dtheta]
-        vx = odom_msg.twist.twist.linear.x
-        vy = odom_msg.twist.twist.linear.y
-        omega = odom_msg.twist.twist.angular.z
+        vx = odom_msg.twist.twist.linear.x + np.random.normal(0.0, self.sigma_x, n)
+        vy = odom_msg.twist.twist.linear.y + np.random.normal(0.0, self.sigma_y, n)
+        omega = odom_msg.twist.twist.angular.z + np.random.normal(0.0, self.sigma_theta, n)
         odometry = np.array([vx * dt, vy * dt, omega * dt])
 
         self.particles = self.motion_model.evaluate(self.particles, odometry)

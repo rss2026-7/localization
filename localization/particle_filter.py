@@ -97,10 +97,11 @@ class ParticleFilter(Node):
         q = pose_msg.pose.pose.orientation
         theta = 2.0 * np.arctan2(q.z, q.w)
 
-        # Spread particles around the initial guess with small noise
-        self.particles[:, 0] = x 
-        self.particles[:, 1] = y 
-        self.particles[:, 2] = theta 
+        # Spread particles around the initial guess with small Gaussian noise
+        # so the sensor model has diversity to work with from frame one
+        self.particles[:, 0] = np.random.normal(x, 0.5, self.num_particles)
+        self.particles[:, 1] = np.random.normal(y, 0.5, self.num_particles)
+        self.particles[:, 2] = np.random.normal(theta, 0.1, self.num_particles)
         self.initialized = True
         self.get_logger().info(f"Particles initialized at ({x:.2f}, {y:.2f}, {theta:.2f})")
 

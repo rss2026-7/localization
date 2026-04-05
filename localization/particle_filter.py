@@ -99,11 +99,13 @@ class ParticleFilter(Node):
 
         # Spread particles around the initial guess with small Gaussian noise
         # so the sensor model has diversity to work with from frame one
-        self.particles[:, 0] = np.random.normal(x, 0.5, self.num_particles)
-        self.particles[:, 1] = np.random.normal(y, 0.5, self.num_particles)
-        self.particles[:, 2] = np.random.normal(theta, 0.1, self.num_particles)
+        self.particles[:, 0] = np.random.normal(x, 1, self.num_particles)
+        self.particles[:, 1] = np.random.normal(y, 1, self.num_particles)
+        self.particles[:, 2] = np.random.normal(theta, 0.8, self.num_particles)
         self.initialized = True
         self.get_logger().info(f"Particles initialized at ({x:.2f}, {y:.2f}, {theta:.2f})")
+        self.publish_pose_estimate()
+
 
     def odom_callback(self, odom_msg):
         """

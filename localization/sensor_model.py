@@ -153,6 +153,7 @@ class SensorModel:
         scans = np.clip(scans, 0, z_max).astype(int)
 
         # Look up p(measured z | true d) for every particle and beam at once.
+        # probs = self.sensor_model_table[obs[np.newaxis, :], scans]
         probs = self.sensor_model_table[obs, scans]
 
         # Each particle's weight is the product of all its beam probabilities.

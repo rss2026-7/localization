@@ -180,11 +180,16 @@ class SensorModel:
 
         origin = (origin_p.x, origin_p.y, yaw)
 
+        # Store map metadata for potential scan_sim reconstruction
+        self._map_height = map_msg.info.height
+        self._map_width = map_msg.info.width
+        self._map_origin = origin
+
         # Initialize a map with the laser scan
         self.scan_sim.set_map(
             self.map,
-            map_msg.info.height,
-            map_msg.info.width,
+            self._map_height,
+            self._map_width,
             map_msg.info.resolution,
             origin,
             0.5)

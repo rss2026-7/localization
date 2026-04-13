@@ -1,0 +1,20 @@
+<launch>
+    <arg name="num_particles"          default="200"/>
+    <arg name="num_beams_per_particle" default="100"/>
+
+    <!-- Localization first (particle filter waits for simulator, not the other way around) -->
+    <node pkg="localization" exec="particle_filter" name="particle_filter" output="screen">
+        <param from="$(find-pkg-share localization)/params.yaml"/>
+        <param name="num_particles"          value="$(var num_particles)"/>
+        <param name="num_beams_per_particle" value="$(var num_beams_per_particle)"/>
+    </node>
+
+    <!-- Simulator + map server -->
+    <include file="$(find-pkg-share localization)/launch/sim_map.launch.xml"/>
+
+    <!-- Wall follower (publishes to /drive for simulator) -->
+    <include file="$(find-pkg-share wall_follower)/launch/wall_follower.launch.xml"/>
+
+    <!-- Ground truth publisher: logs PF error to CSV, prints mean/std after 10 s -->
+    <node pkg="localization" exec="ground_truth_publisher" name="ground_truth_publisher" output="screen"/>
+</launch>

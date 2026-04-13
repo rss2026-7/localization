@@ -41,6 +41,7 @@ setup(
     entry_points={
         'console_scripts': [
             'particle_filter = localization.particle_filter:main',
+            'ground_truth_publisher = localization.ground_truth_publisher:main',
             'sensor_model_test = localization.test.sensor_model_test:main',
             'motion_model_test = localization.test.motion_model_test:main',
         ],

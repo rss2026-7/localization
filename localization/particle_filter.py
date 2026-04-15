@@ -1,6 +1,5 @@
 import numpy as np
 
-from scan_simulator_2d import PyScanSimulator2D
 from localization.sensor_model import SensorModel
 from localization.motion_model import MotionModel
 
@@ -8,10 +7,8 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, PoseArray, Pose
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Float64MultiArray
-from visualization_msgs.msg import Marker
 from tf2_ros import TransformBroadcaster
 
-from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 import rclpy
 
@@ -70,7 +67,6 @@ class ParticleFilter(Node):
         self.odom_pub = self.create_publisher(Odometry, "/pf/pose/odom", 1)
         self.particle_pub = self.create_publisher(PoseArray, "/pf/particles", 1)
         self.spread_pub = self.create_publisher(Float64MultiArray, "/pf/spread", 1)
-        self.arrow_pub = self.create_publisher(Marker, "/pf/pose/arrow", 1)
 
         # TF broadcaster to publish the map -> particle_filter_frame transform
         self.tf_broadcaster = TransformBroadcaster(self)
@@ -93,61 +89,7 @@ class ParticleFilter(Node):
         self.last_stats_time = self.get_clock().now()
         self.create_timer(2.0, self.log_stats)
 
-        # Throttle visualization publishing (PoseArray, Arrow, Spread)
-        self.viz_publish_counter = 0
-        self.viz_publish_interval = 10  # only publish viz every 10th pose update
-
-        # Allow runtime parameter changes for benchmarking
-        self.add_on_set_parameters_callback(self._on_param_change)
-
         self.get_logger().info("=============+READY+=============")
-
-    def _on_param_change(self, params):
-        """Handle runtime parameter changes for num_particles and num_beams_per_particle."""
-        for param in params:
-            if param.name == 'num_particles':
-                old = self.num_particles
-                new = param.value
-                if new < 1:
-                    return SetParametersResult(successful=False, reason="num_particles must be >= 1")
-                self.num_particles = new
-                # Resize particle array: duplicate/trim existing particles
-                if self.initialized:
-                    if new > old:
-                        # Duplicate random existing particles to fill
-                        extra = new - old
-                        idx = np.random.choice(old, size=extra)
-                        self.particles = np.vstack([self.particles, self.particles[idx]])
-                    else:
-                        self.particles = self.particles[:new]
-                else:
-                    self.particles = np.zeros((new, 3))
-                self.get_logger().info(f"num_particles changed: {old} -> {new}")
-
-            elif param.name == 'num_beams_per_particle':
-                old = self.sensor_model.num_beams_per_particle
-                new = param.value
-                if new < 1:
-                    return SetParametersResult(successful=False, reason="num_beams must be >= 1")
-                self.sensor_model.num_beams_per_particle = new
-                # Reconstruct the scan simulator with new beam count
-                self.sensor_model.scan_sim = PyScanSimulator2D(
-                    new,
-                    self.sensor_model.scan_field_of_view,
-                    0, 0.01,
-                    self.sensor_model.scan_theta_discretization)
-                # Re-set the map if it was already loaded
-                if self.sensor_model.map_set:
-                    self.sensor_model.scan_sim.set_map(
-                        self.sensor_model.map,
-                        self.sensor_model._map_height,
-                        self.sensor_model._map_width,
-                        self.sensor_model.resolution,
-                        self.sensor_model._map_origin,
-                        0.5)
-                self.get_logger().info(f"num_beams_per_particle changed: {old} -> {new}")
-
-        return SetParametersResult(successful=True)
 
     def pose_callback(self, pose_msg):
         """
@@ -196,7 +138,7 @@ class ParticleFilter(Node):
         odometry = np.array([vx * dt, vy * dt, omega * dt])
 
         self.particles = self.motion_model.evaluate(self.particles, odometry)
-        self.publish_pose_estimate(lightweight=True)
+        self.publish_pose_estimate()
 
     def laser_callback(self, scan_msg):
         """
@@ -233,8 +175,8 @@ class ParticleFilter(Node):
 
         # Add a tiny bit of noise after resampling to keep the set diverse
         self.particles[:, 0] 
-        self.particles[:, 1]
-        self.particles[:, 2]
+        self.particles[:, 1] 
+        self.particles[:, 2] 
 
         self.publish_pose_estimate()
 
@@ -254,19 +196,14 @@ class ParticleFilter(Node):
 
         return avg_x, avg_y, avg_theta
 
-    def publish_pose_estimate(self, lightweight=False):
+    def publish_pose_estimate(self):
         """
         Publish the current best pose estimate as an Odometry message and
         broadcast the corresponding map -> particle_filter_frame TF transform.
-
-        When lightweight=True (odom updates), skip visualization messages
-        (PoseArray, Arrow, Spread) entirely to reduce overhead.
         """
 
         x, y, theta = self.get_average_pose()
         now = self.get_clock().now().to_msg()
-        sin_half_theta = np.sin(theta / 2.0)
-        cos_half_theta = np.cos(theta / 2.0)
 
         # Publish Odometry message
         odom_msg = Odometry()
@@ -275,56 +212,11 @@ class ParticleFilter(Node):
         odom_msg.child_frame_id = self.particle_filter_frame
         odom_msg.pose.pose.position.x = x
         odom_msg.pose.pose.position.y = y
-        odom_msg.pose.pose.orientation.z = sin_half_theta
-        odom_msg.pose.pose.orientation.w = cos_half_theta
+        odom_msg.pose.pose.orientation.z = np.sin(theta / 2.0)
+        odom_msg.pose.pose.orientation.w = np.cos(theta / 2.0)
         self.odom_pub.publish(odom_msg)
 
-        # Broadcast TF transform so RViz can visualize the car on the map
-        tf_msg = TransformStamped()
-        tf_msg.header.stamp = now
-        tf_msg.header.frame_id = "map"
-        tf_msg.child_frame_id = self.particle_filter_frame
-        tf_msg.transform.translation.x = x
-        tf_msg.transform.translation.y = y
-        tf_msg.transform.translation.z = 0.0
-        tf_msg.transform.rotation.z = sin_half_theta
-        tf_msg.transform.rotation.w = cos_half_theta
-        self.tf_broadcaster.sendTransform(tf_msg)
-
-        self.publish_count += 1
-
-        # Skip visualization messages on lightweight (odom-only) updates
-        if lightweight:
-            return
-
-        # Throttle viz: only publish every viz_publish_interval laser updates
-        self.viz_publish_counter += 1
-        if self.viz_publish_counter % self.viz_publish_interval != 0:
-            return
-
-        # Publish an arrow marker showing inferred pose + heading
-        arrow = Marker()
-        arrow.header.stamp = now
-        arrow.header.frame_id = "map"
-        arrow.ns = "pf_pose"
-        arrow.id = 0
-        arrow.type = Marker.ARROW
-        arrow.action = Marker.ADD
-        arrow.pose.position.x = x
-        arrow.pose.position.y = y
-        arrow.pose.position.z = 0.1
-        arrow.pose.orientation.z = sin_half_theta
-        arrow.pose.orientation.w = cos_half_theta
-        arrow.scale.x = 0.5  # arrow length
-        arrow.scale.y = 0.08  # shaft width
-        arrow.scale.z = 0.08  # head width
-        arrow.color.r = 0.0
-        arrow.color.g = 1.0
-        arrow.color.b = 0.0
-        arrow.color.a = 1.0
-        self.arrow_pub.publish(arrow)
-
-        # Publish the full particle cloud as a PoseArray
+        # Publish the full particle cloud as a PoseArray (vectorized trig)
         pose_array = PoseArray()
         pose_array.header.stamp = now
         pose_array.header.frame_id = "map"
@@ -350,6 +242,19 @@ class ParticleFilter(Node):
             float(np.std(self.particles[:, 2])),
         ]
         self.spread_pub.publish(spread_msg)
+        self.publish_count += 1
+
+        # Broadcast TF transform so RViz can visualize the car on the map
+        tf_msg = TransformStamped()
+        tf_msg.header.stamp = now
+        tf_msg.header.frame_id = "map"
+        tf_msg.child_frame_id = self.particle_filter_frame
+        tf_msg.transform.translation.x = x
+        tf_msg.transform.translation.y = y
+        tf_msg.transform.translation.z = 0.0
+        tf_msg.transform.rotation.z = np.sin(theta / 2.0)
+        tf_msg.transform.rotation.w = np.cos(theta / 2.0)
+        self.tf_broadcaster.sendTransform(tf_msg)
 
 
     def log_stats(self):
@@ -367,10 +272,10 @@ class ParticleFilter(Node):
         std_x = np.std(self.particles[:, 0])
         std_y = np.std(self.particles[:, 1])
 
-        # self.get_logger().info(
-        #     f"[PF] {hz:.1f} Hz | pose=({x:.2f}, {y:.2f}, {np.degrees(theta):.1f}deg) | "
-        #     f"spread=({std_x:.3f}, {std_y:.3f})m"
-        # )
+        self.get_logger().info(
+            f"[PF] {hz:.1f} Hz | pose=({x:.2f}, {y:.2f}, {np.degrees(theta):.1f}deg) | "
+            f"spread=({std_x:.3f}, {std_y:.3f})m"
+        )
 
 
 def main(args=None):

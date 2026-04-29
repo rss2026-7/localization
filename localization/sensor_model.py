@@ -156,12 +156,7 @@ class SensorModel:
         # Look up p(measured z | true d) for every particle and beam at once.
         probs = self.sensor_model_table[obs, scans]
 
-        # Use log-space to avoid underflow from multiplying many small probabilities.
-        # Squash probabilities (raise to power < 1) to soften the distribution.
-        squash_factor = 1.0 / 3.0
-        log_weights = np.sum(np.log(probs + 1e-300) * squash_factor, axis=1)
-        log_weights -= np.max(log_weights)  # shift for numerical stability
-        weights = np.exp(log_weights)
+        weights = np.prod(probs, axis=1)
         return weights
 
     def map_callback(self, map_msg):

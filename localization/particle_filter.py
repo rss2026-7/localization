@@ -34,10 +34,12 @@ class ParticleFilter(Node):
         self.declare_parameter('odom_topic', "/odom")
         self.declare_parameter('scan_topic', "/scan")
         self.declare_parameter('num_particles', 200)
+        self.declare_parameter('angle_step', 0)
 
         scan_topic = self.get_parameter("scan_topic").get_parameter_value().string_value
         odom_topic = self.get_parameter("odom_topic").get_parameter_value().string_value
         self.num_particles = self.get_parameter("num_particles").get_parameter_value().integer_value
+        self.angle_step = self.get_parameter("angle_step").get_parameter_value().integer_value
 
         self.laser_sub = self.create_subscription(LaserScan, scan_topic,
                                                   self.laser_callback,
@@ -151,11 +153,16 @@ class ParticleFilter(Node):
         if not self.sensor_model.map_set:
             return
 
-        # Downsample the full lidar scan to num_beams_per_particle evenly spaced beams
+        # Downsample the full lidar scan to num_beams_per_particle beams.
+        # angle_step>0: stride every N-th beam (real robot, matches real_params angle_step).
+        # angle_step==0: linspace uniform sampling (simulation default).
         ranges = np.array(scan_msg.ranges)
         num_beams = self.sensor_model.num_beams_per_particle
-        indices = np.linspace(0, len(ranges) - 1, num_beams, dtype=int)
-        observation = ranges[indices]
+        if self.angle_step > 0:
+            observation = ranges[::self.angle_step][:num_beams]
+        else:
+            indices = np.linspace(0, len(ranges) - 1, num_beams, dtype=int)
+            observation = ranges[indices]
 
         # Get a probability weight for each particle
         weights = self.sensor_model.evaluate(self.particles, observation)

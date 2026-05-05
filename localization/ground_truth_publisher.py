@@ -45,7 +45,10 @@ class GroundTruthPublisher(Node):
             Odometry, "/pf/pose/odom", self._pf_callback, 1
         )
 
-        self._euclidean_errors = []
+        # Welford running stats — O(1) memory instead of an unbounded list
+        self._n_errors = 0
+        self._mean_error = 0.0
+        self._M2_error = 0.0
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         csv_path = os.path.join(os.getcwd(), f"pf_error_{timestamp}.csv")
@@ -112,7 +115,10 @@ class GroundTruthPublisher(Node):
         heading_err = float(np.arctan2(np.sin(gt_theta - pf_theta),
                                        np.cos(gt_theta - pf_theta)))
 
-        self._euclidean_errors.append(euclidean)
+        self._n_errors += 1
+        delta = euclidean - self._mean_error
+        self._mean_error += delta / self._n_errors
+        self._M2_error += delta * (euclidean - self._mean_error)
 
         err_msg = Float64MultiArray()
         err_msg.data = [euclidean, heading_err]
@@ -127,13 +133,13 @@ class GroundTruthPublisher(Node):
         self._csv_file.flush()
 
     def _print_summary(self):
-        errors = np.array(self._euclidean_errors)
-        if len(errors) == 0:
+        if self._n_errors == 0:
             print("\n[ground_truth_publisher] No samples collected (PF never initialized?)")
         else:
-            print(f"\n[ground_truth_publisher] Summary ({len(errors)} samples)")
-            print(f"  Euclidean error  mean: {np.mean(errors):.4f} m")
-            print(f"  Euclidean error  std:  {np.std(errors):.4f} m")
+            std = float(np.sqrt(self._M2_error / self._n_errors))
+            print(f"\n[ground_truth_publisher] Summary ({self._n_errors} samples)")
+            print(f"  Euclidean error  mean: {self._mean_error:.4f} m")
+            print(f"  Euclidean error  std:  {std:.4f} m")
 
     def destroy_node(self):
         self._print_summary()

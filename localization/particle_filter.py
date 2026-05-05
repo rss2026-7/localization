@@ -84,6 +84,9 @@ class ParticleFilter(Node):
         # Don't run the filter until the user sets an initial pose
         self.initialized = False
 
+        # Decimate /pf/particles to every Nth call so DDS SHM doesn't fill /dev/shm
+        self._particle_pub_counter = 0
+
         # Periodic stats logger (every 2 seconds)
         self.publish_count = 0
         self.last_stats_time = self.get_clock().now()
@@ -174,9 +177,9 @@ class ParticleFilter(Node):
         self.particles = self.particles[sampled_indices]
 
         # Add a tiny bit of noise after resampling to keep the set diverse
-        self.particles[:, 0] 
-        self.particles[:, 1] 
-        self.particles[:, 2] 
+        self.particles[:, 0] += np.random.normal(0, 0.01, self.num_particles)
+        self.particles[:, 1] += np.random.normal(0, 0.01, self.num_particles)
+        self.particles[:, 2] += np.random.normal(0, 0.005, self.num_particles)
 
         self.publish_pose_estimate()
 
@@ -216,23 +219,25 @@ class ParticleFilter(Node):
         odom_msg.pose.pose.orientation.w = np.cos(theta / 2.0)
         self.odom_pub.publish(odom_msg)
 
-        # Publish the full particle cloud as a PoseArray (vectorized trig)
-        pose_array = PoseArray()
-        pose_array.header.stamp = now
-        pose_array.header.frame_id = "map"
-        half_thetas = self.particles[:, 2] / 2.0
-        sin_half = np.sin(half_thetas)
-        cos_half = np.cos(half_thetas)
-        poses = []
-        for i in range(self.num_particles):
-            pose = Pose()
-            pose.position.x = self.particles[i, 0]
-            pose.position.y = self.particles[i, 1]
-            pose.orientation.z = float(sin_half[i])
-            pose.orientation.w = float(cos_half[i])
-            poses.append(pose)
-        pose_array.poses = poses
-        self.particle_pub.publish(pose_array)
+        # Decimated 5:1: at ~90 Hz this fills /dev/shm via the DDS SHM transport
+        self._particle_pub_counter += 1
+        if self._particle_pub_counter % 5 == 0:
+            pose_array = PoseArray()
+            pose_array.header.stamp = now
+            pose_array.header.frame_id = "map"
+            half_thetas = self.particles[:, 2] / 2.0
+            sin_half = np.sin(half_thetas)
+            cos_half = np.cos(half_thetas)
+            poses = []
+            for i in range(self.num_particles):
+                pose = Pose()
+                pose.position.x = self.particles[i, 0]
+                pose.position.y = self.particles[i, 1]
+                pose.orientation.z = float(sin_half[i])
+                pose.orientation.w = float(cos_half[i])
+                poses.append(pose)
+            pose_array.poses = poses
+            self.particle_pub.publish(pose_array)
 
         # Publish particle spread [std_x, std_y, std_theta]
         spread_msg = Float64MultiArray()

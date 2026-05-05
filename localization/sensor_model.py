@@ -165,6 +165,14 @@ class SensorModel:
         return weights
 
     def map_callback(self, map_msg):
+        # Skip rebuild if /map repeats — the C++ ray cache may not free its prior grid.
+        info = map_msg.info
+        sig = (info.width, info.height, info.resolution,
+               hash(np.asarray(map_msg.data, dtype=np.int8).tobytes()))
+        if self.map_set and getattr(self, '_map_sig', None) == sig:
+            return
+        self._map_sig = sig
+
         # Convert the map to a numpy array
         self.map = np.array(map_msg.data, np.double) / 100.
         self.map = np.clip(self.map, 0, 1)

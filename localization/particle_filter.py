@@ -176,11 +176,6 @@ class ParticleFilter(Node):
         sampled_indices = np.random.choice(self.num_particles, size=self.num_particles, p=weights)
         self.particles = self.particles[sampled_indices]
 
-        # Add a tiny bit of noise after resampling to keep the set diverse
-        self.particles[:, 0] += np.random.normal(0, 0.01, self.num_particles)
-        self.particles[:, 1] += np.random.normal(0, 0.01, self.num_particles)
-        self.particles[:, 2] += np.random.normal(0, 0.005, self.num_particles)
-
         self.publish_pose_estimate()
 
     def get_average_pose(self):
